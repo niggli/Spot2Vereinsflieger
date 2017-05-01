@@ -24,6 +24,7 @@
 	$flightPilotId = "";
 	$flightCallsign = "";
 	$flightStarttype = "";
+	$flightTowCallsign = "";
 	$pushoverApplicationKey = "";
 	$pushoverUserKey = "";
 	$spotFeedID = "";
@@ -179,6 +180,7 @@
 		global $flightPilotId;
 		global $flightCallsign;
 		global $flightStarttype;
+		global $flightTowCallsign;
 
         $a = new VereinsfliegerRestInterface();
         $result = $a->SignIn($vereinsfliegerLogin, $vereinsfliegerPassword,0);
@@ -195,9 +197,8 @@
                 'uidpilot' => $flightPilotId,
                 'starttype' => $flightStarttype,
                 'departuretime' => $takeofftime,
-                'departurelocation' => $flightAirport);
-                //'departurelocation' => "Grenchen",
-                //'towcallsign' => "HB-EQM");
+                'departurelocation' => $flightAirport,
+				'towcallsign' => $flightTowCallsign);
 
             // insert flight into DB
             $result = $a->InsertFlight ($Flight);
@@ -232,7 +233,6 @@
       	$Flight = array(
         	'arrivaltime' => $timestamp,
         	'arrivallocation' => $flightAirport);
-        	//'arrivallocation' => "Grenchen");
 		
 	  	$a = new VereinsfliegerRestInterface();
       	$result = $a->SignIn($vereinsfliegerLogin,$vereinsfliegerPassword,0);
