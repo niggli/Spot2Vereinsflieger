@@ -11,7 +11,8 @@
   // Versionen
   // 1.0 - 18.04.2017 First draft
   // 1.1 - 14.06.2017 Use start time instead of flight ID, because flight ID is sometimes manually changed in the field.
-  // 1.2 - 18.01.2018 Add support for localtime in vereinsflieger.de. Some cleanup.
+  // 1.2 - 18.01.2018 Add support for localtime in vereinsflieger.de. Some cleanups.
+  // 1.3 - 07.05.2018 Adapt to some new behaviour of the vereinsflieger.de API. Only write landing time if empty before.
 
   
   // Enable error output
@@ -72,6 +73,7 @@
     // Check if file has been loaded
     if ($lines != false)
     {
+
       if (!in_array($uniqueid, $lines))
       {
         if ($messagetype == "OK")
@@ -90,7 +92,7 @@
           $landingtimeobject = (new DateTime())->setTimestamp($unixtime);
           $landingDatestring = $landingtimeobject->format("Y-m-d");
           
-          if ($startDatestring == $landingDatestring)
+          if ($startDatestring === $landingDatestring)
           {
 
             //search for flight with pilot name and starttime
@@ -107,13 +109,14 @@
               echo "$message <br />";
             } else
             {
-              echo "Fehler: $result";
+              echo "Error storing landing time: $result";
             }
+            
             
           } else
           {
             // Send error notification
-            echo "Notification: No matching takeoff found. <br />";        
+            echo "Error: No matching takeoff found. <br />";        
           }
           
           // Clear start time
@@ -146,7 +149,7 @@
             echo "$message <br />";
           } else
           {
-            echo "Fehler: $result";
+            echo "Error storing starttime: $result";
           }
 
           // Save Spot unique ID
@@ -247,19 +250,29 @@
     global $flightAirport;
     global $flightTimezone;
 
-    // get timestamp in the correct format
+    // get landing timestamp in the correct format
     $landingtime = date_format(timestamp_to_local($unixtime, $flightTimezone), "Y-m-d H:i");
 
-    // add landing time
-    $Flight = array(
-      'arrivaltime' => $landingtime,
-      'arrivallocation' => $flightAirport);
-    
     $a = new VereinsfliegerRestInterface();
     $success = $a->SignIn($vereinsfliegerLogin,$vereinsfliegerPassword,0);
     
     if ($success)
     {
+      // read flight for start time. Since May 2018 strange things happen if only landing time is updated.
+      $success = $a->GetFlight ($flightid);
+
+      if ($success)
+      {
+        $aResponse = $a->GetResponse();
+        $starttimeobject = new DateTime($aResponse["departuretime"]);
+        $starttime = date_format($starttimeobject, "Y-m-d H:i");
+
+    // add landing time
+    $Flight = array(
+      'arrivaltime' => $landingtime,
+          'departuretime' => $starttime,
+      'arrivallocation' => $flightAirport);
+    
       $updatesuccess = $a->UpdateFlight($flightid, $Flight);
 
       if ($updatesuccess)
@@ -269,6 +282,11 @@
       {
         return -1;
       }
+    } else
+    {
+        return -3;
+      }
+      
     } else
     {
       return -2;
@@ -305,7 +323,6 @@
           {
             $daydate = $starttime;
             $starttimeVereinsflieger = timestring_to_utc($aResponse[$i]["departuretime"], $daydate, $flightTimezone);
-            $landingtimeVereinsflieger = timestring_to_utc($aResponse[$i]["arrivaltime"], $daydate, $flightTimezone);
             $pilotVereinsflieger = $aResponse[$i]["pilotname"];
             $nachname = substr($pilotVereinsflieger, 0, strpos($pilotVereinsflieger, ','));
             $vorname = substr($pilotVereinsflieger, strpos($pilotVereinsflieger, ',') + 2);
@@ -313,13 +330,21 @@
             
             echo "Flug von Pilot: " . $pilotVereinsflieger . "<br />";
 
-            if($pilotOLC == $pilotVereinsflieger)
+            if($pilotOLC === $pilotVereinsflieger)
             {
               echo "pilot found<br />";
               if (abs($starttime->getTimestamp() - $starttimeVereinsflieger->getTimestamp()) < 1800) // 30 minutes
               {
+                echo "landezeit: " . $aResponse[$i]["arrivaltime"];
+                if ($aResponse[$i]["arrivaltime"] === "00:00:00")
+                {               
                 echo "flight found<br />";
                 return $aResponse[$i]["flid"];
+                } else
+                {
+                  echo "Arrival time already set<br />";
+                }
+
               } else
               {
                 echo "times not matching<br />";
