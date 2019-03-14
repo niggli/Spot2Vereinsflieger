@@ -13,6 +13,7 @@
   // 1.1 - 14.06.2017 Use start time instead of flight ID, because flight ID is sometimes manually changed in the field.
   // 1.2 - 18.01.2018 Add support for localtime in vereinsflieger.de. Some cleanups.
   // 1.3 - 07.05.2018 Adapt to some new behaviour of the vereinsflieger.de API. Only write landing time if empty before.
+  // 1.4 - 14.03.2019 Automatic airport detection. Don't create flight if it's is already in vereinsflieger.
 
   
   // Enable error output
@@ -20,37 +21,69 @@
   ini_set('display_startup_errors', 1);
   error_reporting(E_ALL);
   
-  // global variables, to be replaced in future by config file
-  $vereinsfliegerLogin = "";
-  $vereinsfliegerPassword = "";
-  $flightAirport = "";
-  $flightTimezone = ""; //must be valid PHP timezone string
-  $flightPilotName = "";
-  $flightPilotId = "";
-  $flightCallsign = "";
-  $flightStarttype = "";
-  $flightTowCallsign = "";
-  $flightTypeID = "10"; // 10 means N, Privatflug
-  $flightChargeMode = "2"; // 2 means P, Pilot
-  $pushoverApplicationKey = "";
-  $pushoverUserKey = "";
-  $spotFeedID = "";
+  // Prepare array for airport list
+  $airportentry = array (
+    "name" => "",
+    "timezone" => "",
+    "towcallsign" => "",
+    "flighttypeID" => "",
+    "flightChargeMode" => "",
+    "latitude" => "",
+    "longitude" => ""
+  );
+  $airports = array();
+
+  $configuration = parse_ini_file ("spot2vereinsflieger.cfg.php", 1);
+  $spotFeedID = $configuration["spot"]["feedID"];
+  $vereinsfliegerLogin = $configuration["vereinsflieger"]["login_name"];
+  $vereinsfliegerPassword = $configuration["vereinsflieger"]["password"];
+  $flightAirport = $configuration["defaultairport"]["name"];
+  $flightTimezone = $configuration["defaultairport"]["timezone"];
+  $flightPilotName = $configuration["flightdata"]["pilotname"];
+  $flightPilotId = $configuration["flightdata"]["pilotId"];
+  $flightCallsign = $configuration["flightdata"]["callsign"];
+  $flightStarttype = $configuration["flightdata"]["starttype"];
+  $flightTowCallsign = $configuration["defaultairport"]["towCallsign"];
+  $flightTypeID = $configuration["defaultairport"]["flightTypeID"];
+  $flightChargeMode = $configuration["defaultairport"]["flightChargeMode"];
+  $pushoverApplicationKey = $configuration["pushover"]["applicationKey"];
+  $pushoverUserKey = $configuration["pushover"]["userKey"];
+  $airportNames = explode (",",$configuration["airports"]["names"]);
+  $airportTimezones = explode (",",$configuration["airports"]["timezones"]);
+  $airportTowCallsign = explode (",",$configuration["airports"]["towCallsign"]);
+  $airportFlightTypeID = explode (",",$configuration["airports"]["flightTypeID"]);
+  $airportFlightChargeMode = explode (",",$configuration["airports"]["flightChargeMode"]);
+  $airportLatitudes = explode (",",$configuration["airports"]["latitudes"]);
+  $airportLongitudes = explode (",",$configuration["airports"]["longitudes"]);
+
+  for ($i = 0; $i < count($airportNames); $i++)
+  {
+    $airports[$i] = $airportentry;
+    $airports[$i]["name"] = $airportNames[$i];
+    $airports[$i]["timezone"] = $airportTimezones[$i];
+    $airports[$i]["towcallsign"] = $airportTowCallsign[$i];
+    $airports[$i]["flighttypeID"] = $airportFlightTypeID[$i];
+    $airports[$i]["flightChargeMode"] = $airportFlightChargeMode[$i];
+    $airports[$i]["latitude"] = $airportLatitudes[$i];
+    $airports[$i]["longitude"] = $airportLongitudes[$i];
+  }
   
   require_once('VereinsfliegerRestInterface.php');
-  date_default_timezone_set ( "UTC");
+  date_default_timezone_set ("UTC");
   
   // Generate adress of todays XML
   $now = time();
-  $startDate = date("Y-m-dT00:00:00-0000", $now);
-  $endDate = date("Y-m-dT23:59:59-0000", $now);
+  $startDate = date("Y-m-d\T00:00:00-0000", $now);
+  $endDate = date("Y-m-d\T23:59:59-0000", $now);
   $xmlurl = "https://api.findmespot.com/spot-main-web/consumer/rest-api/2.0/public/feed/"
             . $spotFeedID
             . "/message.xml"
             . "?startDate=" . $startDate
             . "&endDate=" . $endDate;
   
+  echo "Loading XML from URL: " . $xmlurl . "<br />";
   $xml = simplexml_load_file($xmlurl);
-
+  
   // for test load locally
   //$xml = simplexml_load_file("test.xml");
   
@@ -58,10 +91,12 @@
   
   if ($messagecount == null)
   {
+    echo "No messages <br />";
     $messagecount = 0;
   }
 
   //loop from oldest to newest
+  echo "Looking for relevant and new messages <br />";
   for ($counter=($messagecount-1); $counter>=0; $counter--)
   {
     $messagetype = $xml->feedMessageResponse->messages->message[$counter]->messageType;
@@ -73,12 +108,12 @@
     // Check if file has been loaded
     if ($lines != false)
     {
-
       if (!in_array($uniqueid, $lines))
       {
         if ($messagetype == "OK")
         {
           // Landing message
+          echo "Landing message found <br />";
           $unixtime = (int) $xml->feedMessageResponse->messages->message[$counter]->unixTime;
           
           //get starttime
@@ -92,9 +127,21 @@
           $landingtimeobject = (new DateTime())->setTimestamp($unixtime);
           $landingDatestring = $landingtimeobject->format("Y-m-d");
           
+          // Find out at which airport the landing was
+          $latitude = (float) $xml->feedMessageResponse->messages->message[$counter]->latitude;
+          $longitude = (float) $xml->feedMessageResponse->messages->message[$counter]->longitude;
+          $airportindex = findAirport($latitude, $longitude);
+          if ($airportindex > 0)
+          {
+            $flightAirport = $airports[$airportindex]["name"];
+            echo "Flight ends at airport: " . $flightAirport . " <br />";
+          } else
+          {
+            echo "Error finding landing airport <br />";
+          }
+          
           if ($startDatestring === $landingDatestring)
           {
-
             //search for flight with pilot name and starttime
             $flightid = findFlightID($starttimeobject, $flightPilotName);
             
@@ -132,30 +179,52 @@
         } else if ($messagetype == "CUSTOM")
         {
           // Takeoff message
+          echo "Takeoff message found <br />";
           $unixtime = (int) $xml->feedMessageResponse->messages->message[$counter]->unixTime;
           
-          $result = storeStartTime($unixtime);
-          
-          if ($result > 0)
-          {
-            // Save start time in file
-            $starttimefile = fopen("starttime.txt", "w");
-            fwrite($starttimefile, $unixtime);
-            fclose($starttimefile);
+          // Only do something if flight is not yet in Vereinsflieger
+          if (findFlightID((new DateTime())->setTimestamp($unixtime), $flightPilotName) < 0)
+          {    
+            // Find out at which airport the takeoff was
+            $latitude = (float) $xml->feedMessageResponse->messages->message[$counter]->latitude;
+            $longitude = (float) $xml->feedMessageResponse->messages->message[$counter]->longitude;
+            $airportindex = findAirport($latitude, $longitude);
+            if ($airportindex > 0)
+            {
+              $flightAirport = $airports[$airportindex]["name"];
+              echo "Flight starts at airport: " . $flightAirport . " <br />";
+            } else
+            {
+              echo "Error finding start airport <br />";
+            }
             
-            // Send notification
-            $message = "Success storing takeoff time, battery is: " . $xml->feedMessageResponse->messages->message[$counter]->batteryState;
-            sendNotification($message, $pushoverUserKey);
-            echo "$message <br />";
+            $result = storeStartTime($unixtime);
+            
+            if ($result > 0)
+            { 
+              // Send notification
+              $message = "Success storing takeoff time, battery is: " . $xml->feedMessageResponse->messages->message[$counter]->batteryState;
+              sendNotification($message, $pushoverUserKey);
+              echo "$message <br />";
+            } else
+            {
+              echo "Error storing starttime: $result";
+            }
+
           } else
           {
-            echo "Error storing starttime: $result";
+            echo "Flight already in Vereinsflieger, don't add it <br />";            
           }
-
+          
+          // Save start time in file
+          $starttimefile = fopen("starttime.txt", "w");
+          fwrite($starttimefile, $unixtime);
+          fclose($starttimefile);
+          
           // Save Spot unique ID
           $uniqueidfile = fopen("knownSpotMessageIDs.txt", "a");
           fwrite($uniqueidfile, "$uniqueid\n");
-          fclose($uniqueidfile);
+          fclose($uniqueidfile);   
           
         } else
         {
@@ -164,7 +233,7 @@
       }
     } else
     {
-      echo "Fehler: File knownSpotMessageIDs.txt not found or empty";  
+      echo "Error: File knownSpotMessageIDs.txt not found or empty";  
     }  
   
   }
@@ -201,6 +270,8 @@
     global $flightTypeID;
     global $flightChargeMode;
     global $flightTimezone;
+    
+    echo "storeStartTime flightChargeMode: " . $flightChargeMode;
 
     $a = new VereinsfliegerRestInterface();
     $success = $a->SignIn($vereinsfliegerLogin, $vereinsfliegerPassword,0);
@@ -267,23 +338,23 @@
         $starttimeobject = new DateTime($aResponse["departuretime"]);
         $starttime = date_format($starttimeobject, "Y-m-d H:i");
 
-    // add landing time
-    $Flight = array(
-      'arrivaltime' => $landingtime,
+        // add landing time
+        $Flight = array(
+          'arrivaltime' => $landingtime,
           'departuretime' => $starttime,
-      'arrivallocation' => $flightAirport);
-    
-      $updatesuccess = $a->UpdateFlight($flightid, $Flight);
-
-      if ($updatesuccess)
-      {
-        return $flightid;
+          'arrivallocation' => $flightAirport);
+        
+        $updatesuccess = $a->UpdateFlight($flightid, $Flight);
+        
+        if ($updatesuccess)
+        {
+          return $flightid;
+        } else
+        {
+          return -1;
+        } 
       } else
       {
-        return -1;
-      }
-    } else
-    {
         return -3;
       }
       
@@ -293,7 +364,7 @@
     }
   }
  
-  function findFlightID ($starttime, $pilotOLC)
+  function findFlightID ($starttime, $pilotname)
   {
     echo "findFlightID()<br />";
     
@@ -319,7 +390,7 @@
         $no_Flights = count ($aResponse) - 1; // last element is httpresponse...
         if ($no_Flights > 0)
         {
-          for ($i=0; $i<$no_Flights;$i++)
+          for ($i = 0; $i < $no_Flights; $i++)
           {
             $daydate = $starttime;
             $starttimeVereinsflieger = timestring_to_utc($aResponse[$i]["departuretime"], $daydate, $flightTimezone);
@@ -330,7 +401,7 @@
             
             echo "Flug von Pilot: " . $pilotVereinsflieger . "<br />";
 
-            if($pilotOLC === $pilotVereinsflieger)
+            if($pilotname === $pilotVereinsflieger)
             {
               echo "pilot found<br />";
               if (abs($starttime->getTimestamp() - $starttimeVereinsflieger->getTimestamp()) < 1800) // 30 minutes
@@ -338,8 +409,8 @@
                 echo "landezeit: " . $aResponse[$i]["arrivaltime"];
                 if ($aResponse[$i]["arrivaltime"] === "00:00:00")
                 {               
-                echo "flight found<br />";
-                return $aResponse[$i]["flid"];
+                  echo "flight found<br />";
+                  return $aResponse[$i]["flid"];
                 } else
                 {
                   echo "Arrival time already set<br />";
@@ -415,6 +486,43 @@
     } else
     {
       return -1;
+    }
+  }
+  
+  // Finds the nearest airport from the list
+  function findAirport($latitude, $longitude)
+  {
+    global $airports;
+    
+    for ($i = 0; $i < count($airports); $i++)
+    {
+      $distance[$i] = distance($latitude, $longitude, $airports[$i]["latitude"], $airports[$i]["longitude"]);
+      echo "Distance to " . $airports[$i]["name"] . " is " . $distance[$i] . "km<br />";
+    }
+    
+    if (min($distance) < 50)
+    {
+      // Find the smallest distance. The possibility of two same distances is nearly zero
+      return array_keys($distance, min($distance))[0]; //[0] to convert single field array to scalar value
+    } else
+    {
+      return -1; 
+    }
+  }
+  
+  // Calculates the distance of two points on earth
+  function distance($lat1, $lon1, $lat2, $lon2)
+  {
+    if (($lat1 == $lat2) && ($lon1 == $lon2)) {
+      return 0;
+    }
+    else {
+      $theta = $lon1 - $lon2;
+      $dist = sin(deg2rad($lat1)) * sin(deg2rad($lat2)) +  cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * cos(deg2rad($theta));
+      $dist = acos($dist);
+      $dist = rad2deg($dist);
+      $kilometers = $dist * 60 * 1.1515 * 1.609344;
+      return $kilometers;
     }
   }
   
