@@ -14,6 +14,7 @@
   // 1.2 - 18.01.2018 Add support for localtime in vereinsflieger.de. Some cleanups.
   // 1.3 - 07.05.2018 Adapt to some new behaviour of the vereinsflieger.de API. Only write landing time if empty before.
   // 1.4 - 14.03.2019 Automatic airport detection. Don't create flight if it's is already in vereinsflieger.
+  // 1.5 - 18.03.2019 Bugfix airport detection.
 
   
   // Enable error output
@@ -192,6 +193,10 @@
             if ($airportindex > 0)
             {
               $flightAirport = $airports[$airportindex]["name"];
+              $flightTowCallsign = $airports[$airportindex]["towcallsign"];
+              $flightTypeID = $airports[$airportindex]["flighttypeID"];
+              $flightChargeMode = $airports[$airportindex]["flightChargeMode"];
+              $flightTimezone = $airports[$airportindex]["timezone"];              
               echo "Flight starts at airport: " . $flightAirport . " <br />";
             } else
             {
