@@ -9,7 +9,7 @@ class VereinsfliegerRestInterface
 	//=============================================================================================
 	// Anmelden
 	//=============================================================================================
-	public function SignIn($UserName, $Password, $Cid=0)
+	public function SignIn($UserName, $Password, $Cid=0, $AppKey='')
 	{
 		// Accesstoken holen
 		$this->SendRequest("GET", "auth/accesstoken", null);
@@ -24,7 +24,8 @@ class VereinsfliegerRestInterface
 			'accesstoken' => $this->AccessToken, 
 			'username' => $UserName, 
 			'password' => $PassWordHash,
-			'cid'      => $Cid);
+			'cid'      => $Cid,
+			'appkey'   => $AppKey);
 		$this->SendRequest("POST", "auth/signin", $Data);
 		return (($this->HttpStatusCode) == 200);
 	}
@@ -125,6 +126,32 @@ class VereinsfliegerRestInterface
 		$this->SendRequest("POST", "flight/list/nodate",$aData);
 		return (($this->HttpStatusCode) == 200);
 	}
+		
+	//=============================================================================================
+	// GetFlights_plane
+	//=============================================================================================
+	public function GetFlights_plane($Callsign, $Count)
+	{
+		$aData = array(
+			'accesstoken' => $this->AccessToken,
+			'callsign' => $Callsign,
+			'count' => $Count);
+		$this->SendRequest("POST", "flight/list/plane",$aData);
+		return (($this->HttpStatusCode) == 200);
+	}
+		
+	//=============================================================================================
+	// GetFlights_user
+	//=============================================================================================
+	public function GetFlights_user($Uid, $Count)
+	{
+		$aData = array(
+			'accesstoken' => $this->AccessToken,
+			'uid' => $Uid,
+			'count' => $Count);
+		$this->SendRequest("POST", "flight/list/user",$aData);
+		return (($this->HttpStatusCode) == 200);
+	}
 	
 	//=============================================================================================
 	// GetPublicCalendar
@@ -132,13 +159,47 @@ class VereinsfliegerRestInterface
 	public function GetPublicCalendar($HpAccessCode="")
 	{
 		$aData = array(
-			'accesstoken' => $this->AccessToken,
 			'hpaccesscode' => $HpAccessCode
 			);
 		$this->SendRequest("POST", "calendar/list/public",$aData);
 		return (($this->HttpStatusCode) == 200);
 	}
 
+	//=============================================================================================
+	// GetUsers
+	//=============================================================================================
+	public function GetUsers()
+	{
+		$aData = array('accesstoken' => $this->AccessToken);
+		$this->SendRequest("POST", "user/list",$aData);
+		return (($this->HttpStatusCode) == 200);
+	}	
+		
+	//=============================================================================================
+	// GetReservations
+	//=============================================================================================
+	public function GetReservations()
+	{
+		$aData = array(
+			'accesstoken' => $this->AccessToken
+			);
+		$this->SendRequest("POST", "reservation/list/active",$aData);
+		return (($this->HttpStatusCode) == 200);
+	}
+	
+		
+	//=============================================================================================
+	// GetAirplaneMaintenanceData
+	//=============================================================================================
+	public function GetAirplaneMaintenanceData($Callsign)
+	{
+		$aData = array(
+			'accesstoken' => $this->AccessToken
+			);
+		$this->SendRequest("POST", "maintenance/airplane/".$Callsign, $aData);
+		return (($this->HttpStatusCode) == 200);
+	}
+	
 	//=============================================================================================
 	// GetHttpStatusCode
 	//=============================================================================================
