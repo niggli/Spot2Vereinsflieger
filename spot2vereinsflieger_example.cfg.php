@@ -9,6 +9,7 @@ feedID = "xxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 [vereinsflieger]
 login_name = "user";
 password = "password";
+appkey = "348972394873284298374234";
 
 [flightdata]
 pilotname = "Pilot Name";

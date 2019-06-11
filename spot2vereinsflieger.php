@@ -15,6 +15,7 @@
   // 1.3 - 07.05.2018 Adapt to some new behaviour of the vereinsflieger.de API. Only write landing time if empty before.
   // 1.4 - 14.03.2019 Automatic airport detection. Don't create flight if it's is already in vereinsflieger.
   // 1.5 - 18.03.2019 Bugfix airport detection.
+  // 1.6 - 11.06.2019 Add vereinsflieger appkey to SignIn
 
   
   // Enable error output
@@ -38,6 +39,7 @@
   $spotFeedID = $configuration["spot"]["feedID"];
   $vereinsfliegerLogin = $configuration["vereinsflieger"]["login_name"];
   $vereinsfliegerPassword = $configuration["vereinsflieger"]["password"];
+  $vereinsfliegerAppkey = $configuration["vereinsflieger"]["appkey"];
   $flightAirport = $configuration["defaultairport"]["name"];
   $flightTimezone = $configuration["defaultairport"]["timezone"];
   $flightPilotName = $configuration["flightdata"]["pilotname"];
@@ -265,7 +267,8 @@
   function storeStartTime ($unixtime)
   {
     global $vereinsfliegerLogin;
-    global $vereinsfliegerPassword;  
+    global $vereinsfliegerPassword; 
+    global $vereinsfliegerAppkey;
     global $flightAirport;
     global $flightPilotName;
     global $flightPilotId;
@@ -279,7 +282,7 @@
     echo "storeStartTime flightChargeMode: " . $flightChargeMode;
 
     $a = new VereinsfliegerRestInterface();
-    $success = $a->SignIn($vereinsfliegerLogin, $vereinsfliegerPassword,0);
+    $success = $a->SignIn($vereinsfliegerLogin, $vereinsfliegerPassword,0,$vereinsfliegerAppkey);
 
     if ($success)
     {
@@ -322,7 +325,8 @@
   function storeLandingTime ($flightid, $unixtime)
   {
     global $vereinsfliegerLogin;
-    global $vereinsfliegerPassword;  
+    global $vereinsfliegerPassword;
+    global $vereinsfliegerAppkey;
     global $flightAirport;
     global $flightTimezone;
 
@@ -330,7 +334,7 @@
     $landingtime = date_format(timestamp_to_local($unixtime, $flightTimezone), "Y-m-d H:i");
 
     $a = new VereinsfliegerRestInterface();
-    $success = $a->SignIn($vereinsfliegerLogin,$vereinsfliegerPassword,0);
+    $success = $a->SignIn($vereinsfliegerLogin,$vereinsfliegerPassword,0,$vereinsfliegerAppkey);
     
     if ($success)
     {
@@ -375,11 +379,12 @@
     
     global $vereinsfliegerLogin;
     global $vereinsfliegerPassword;
+    global $vereinsfliegerAppkey;
     global $flightTimezone;
     
     // login to Vereinsflieger
     $a = new VereinsfliegerRestInterface();
-    $success = $a->SignIn($vereinsfliegerLogin, $vereinsfliegerPassword, 0);
+    $success = $a->SignIn($vereinsfliegerLogin, $vereinsfliegerPassword, 0, $vereinsfliegerAppkey);
     
     if ($success)
     {
